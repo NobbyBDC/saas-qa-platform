@@ -27,7 +27,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
           >
             {project.name}
           </Link>
-          <p className="text-xs text-slate-500 mt-0.5 truncate">{project.figmaUrl}</p>
+          <p className="text-xs text-slate-500 mt-0.5 truncate">{project.previewUrl ?? project.description}</p>
         </div>
         {summary && (
           <ScoreRing score={summary.overallScore} size={48} strokeWidth={4} />
@@ -36,9 +36,8 @@ export function ProjectCard({ project }: ProjectCardProps) {
 
       {/* Stage scores */}
       {summary && (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {[
-            { label: 'Visual', score: summary.visualScore },
             { label: 'A11y', score: summary.accessibilityScore },
             { label: 'Perf', score: summary.performanceScore },
             { label: 'Security', score: summary.securityScore },
