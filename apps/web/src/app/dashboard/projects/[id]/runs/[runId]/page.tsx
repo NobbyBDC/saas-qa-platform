@@ -1,8 +1,7 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, XCircle, Clock, Loader2, SkipForward, FileText, ExternalLink, Code2, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, Clock, Loader2, SkipForward, FileText } from 'lucide-react';
 import { useRun } from '@/hooks/useProjects';
 import { RunStatusBadge } from '@/components/UI/RunStatusBadge';
 import { ScoreRing } from '@/components/UI/ScoreRing';
@@ -18,10 +17,6 @@ const fmtDur = (ms: number) => {
 };
 
 const STAGE_LABELS: Record<StageType, string> = {
-  figma_ingestion:  'Figma Ingestion',
-  code_generation:  'Code Generation',
-  deployment:       'Preview Deploy',
-  visual_regression:'Visual Regression',
   functional:       'Functional Tests',
   accessibility:    'Accessibility',
   performance:      'Performance',
@@ -45,50 +40,6 @@ function stageBg(status: StageStatus) {
   return 'border-slate-700/50';
 }
 
-function GeneratedCodeViewer({ stage }: { stage: any }) {
-  const [openFile, setOpenFile] = useState<string | null>(null);
-  const result = stage?.result as any;
-  if (!result) return null;
-
-  const files: Array<{ name: string; code: string }> = [
-    ...(result.components ?? []).map((c: any) => ({ name: `src/components/${c.name}.tsx`, code: c.code ?? '' })),
-    ...(result.pages ?? []).map((p: any) => ({ name: `src/pages${p.route ?? '/'}/index.tsx`, code: p.code ?? '' })),
-    ...(result.designTokenFile ? [{ name: 'src/styles/tokens.css', code: result.designTokenFile }] : []),
-    ...(result.tailwindConfig ? [{ name: 'tailwind.config.js', code: result.tailwindConfig }] : []),
-  ];
-
-  if (files.length === 0) return null;
-
-  return (
-    <div className="card overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-800 flex items-center gap-2">
-        <Code2 className="w-4 h-4 text-brand-400" />
-        <h3 className="font-semibold text-white">Generated Code ({files.length} files)</h3>
-      </div>
-      <div className="divide-y divide-slate-800">
-        {files.map((file) => (
-          <div key={file.name}>
-            <button
-              className="w-full px-6 py-3 flex items-center gap-2 text-left hover:bg-slate-800/40 transition-colors"
-              onClick={() => setOpenFile(openFile === file.name ? null : file.name)}
-            >
-              {openFile === file.name
-                ? <ChevronDown className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                : <ChevronRight className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />}
-              <span className="text-xs font-mono text-slate-300">{file.name}</span>
-              <span className="ml-auto text-xs text-slate-600">{file.code.length.toLocaleString()} chars</span>
-            </button>
-            {openFile === file.name && (
-              <pre className="px-6 py-4 bg-slate-950 text-xs font-mono text-slate-300 overflow-x-auto max-h-96 overflow-y-auto border-t border-slate-800">
-                {file.code}
-              </pre>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function RunDetailPage({
   params,
@@ -126,9 +77,6 @@ export default function RunDetailPage({
     ? fmtDur(new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime())
     : null;
 
-  const deployStage = run.stages?.find((s: any) => s.type === 'deployment');
-  const codegenStage = run.stages?.find((s: any) => s.type === 'code_generation');
-  const previewUrl: string | undefined = (deployStage?.result as any)?.previewUrl;
   const hasReport = run.stages?.some((s: any) => s.type === 'report_generation' && s.status === 'passed');
 
   return (
@@ -152,30 +100,17 @@ export default function RunDetailPage({
       </div>
 
       {/* Action buttons */}
-      {(hasReport || previewUrl) && (
+      {hasReport && (
         <div className="flex items-center gap-3 flex-wrap">
-          {hasReport && (
-            <a
-              href={`/report/${runId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary flex items-center gap-2 text-sm"
-            >
-              <FileText className="w-4 h-4" />
-              View Full Report
-            </a>
-          )}
-          {previewUrl && (
-            <a
-              href={previewUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-ghost flex items-center gap-2 text-sm"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Open Preview
-            </a>
-          )}
+          <a
+            href={`/report/${runId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary flex items-center gap-2 text-sm"
+          >
+            <FileText className="w-4 h-4" />
+            View Full Report
+          </a>
         </div>
       )}
 
@@ -185,9 +120,8 @@ export default function RunDetailPage({
           <h3 className="font-semibold text-white mb-4">Results</h3>
           <div className="flex items-center gap-6">
             <ScoreRing score={run.summary.overallScore} size={72} strokeWidth={5} />
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 flex-1">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 flex-1">
               {[
-                { label: 'Visual',    score: run.summary.visualScore },
                 { label: 'A11y',      score: run.summary.accessibilityScore },
                 { label: 'Perf',      score: run.summary.performanceScore },
                 { label: 'Security',  score: run.summary.securityScore },
@@ -267,9 +201,6 @@ export default function RunDetailPage({
           ))}
         </div>
       </div>
-
-      {/* Generated Code */}
-      {codegenStage && <GeneratedCodeViewer stage={codegenStage} />}
 
       {/* Issues */}
       {run.issues && run.issues.length > 0 && (
