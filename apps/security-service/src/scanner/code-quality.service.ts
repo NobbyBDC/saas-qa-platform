@@ -56,7 +56,7 @@ export class CodeQualityService {
       headers,
       params: {
         component: sonarProjectKey,
-        metricKeys: 'coverage,duplicated_lines_density,code_smells,bugs,vulnerabilities,security_hotspots,sqale_rating,ncloc',
+        metricKeys: 'coverage,duplicated_lines_density,code_smells,bugs,vulnerabilities,security_hotspots,sqale_rating,reliability_rating,security_rating,ncloc',
       },
       timeout: 15000,
     });
@@ -64,7 +64,13 @@ export class CodeQualityService {
     const measure = (key: string) =>
       parseFloat(data.component?.measures?.find((m: any) => m.metric === key)?.value ?? '0');
 
-    const rating = (['A', 'B', 'C', 'D', 'E'] as const)[Math.min(Math.round(measure('sqale_rating')) - 1, 4)] ?? 'C';
+    const toGrade = (r: number): 'A'|'B'|'C'|'D'|'E' =>
+      (['A', 'B', 'C', 'D', 'E'] as const)[Math.min(Math.round(r) - 1, 4)] ?? 'C';
+
+    // Use the worst rating across maintainability, reliability, and security
+    const worstRating = Math.max(measure('sqale_rating'), measure('reliability_rating'), measure('security_rating'));
+    const rating = toGrade(worstRating);
+
     const coverage = measure('coverage');
     const duplications = measure('duplicated_lines_density');
     const codeSmells = measure('code_smells');
@@ -112,8 +118,8 @@ export class CodeQualityService {
     metrics: { rating: 'A'|'B'|'C'|'D'|'E'; coverage: number; duplications: number; codeSmells: number; bugs: number; vulnerabilities: number; securityHotspots: number },
     extraIssues: Issue[] = [],
   ): CodeQualityResult {
-    const ratingScore = { A: 95, B: 80, C: 65, D: 50, E: 30 }[metrics.rating];
-    const score = Math.max(0, ratingScore - metrics.bugs * 5 - metrics.vulnerabilities * 8);
+    // Score derived from rating band — no multipliers that collapse to 0 on real repos
+    const score = { A: 90, B: 75, C: 60, D: 40, E: 20 }[metrics.rating];
 
     const issues: Issue[] = [...extraIssues];
     if (metrics.bugs > 0)
