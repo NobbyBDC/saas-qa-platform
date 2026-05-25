@@ -20,7 +20,8 @@ out/
 coverage/
 playwright-report/
 test-results/
-reports/
+**/playwright-reports/
+**/test-reports/
 
 # Turbo
 .turbo/
