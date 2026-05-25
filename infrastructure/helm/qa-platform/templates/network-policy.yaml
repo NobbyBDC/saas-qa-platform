@@ -1,0 +1,75 @@
+{{- if .Values.networkPolicy.enabled -}}
+---
+# Default deny-all ingress + egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "qa-platform.fullname" . }}-default-deny
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# API Gateway: accept ingress from ingress-nginx only; egress to microservices + data stores
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "qa-platform.fullname" . }}-api-gateway
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 4000
+  egress:
+    - ports:
+        - port: 5432  # postgres
+        - port: 6379  # redis
+        - port: 9000  # minio
+        - port: 4001  # figma-service
+        - port: 4002  # codegen-service
+        - port: 4003  # testing-service
+        - port: 4004  # security-service
+        - port: 4005  # reporting-service
+        - port: 443   # external HTTPS (Stripe, Anthropic, GitHub)
+        - port: 53    # DNS
+          protocol: UDP
+---
+# Web: accept ingress from ingress-nginx; egress to api-gateway only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "qa-platform.fullname" . }}-web
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 3000
+  egress:
+    - ports:
+        - port: 4000  # api-gateway
+        - port: 443   # external HTTPS (CDN, etc.)
+        - port: 53
+          protocol: UDP
+{{- end }}

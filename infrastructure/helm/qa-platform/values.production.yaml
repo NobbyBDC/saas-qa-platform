@@ -1,0 +1,38 @@
+# Production overrides — applied with: helm upgrade ... -f values.yaml -f values.production.yaml
+environment: production
+
+ingress:
+  hosts:
+    web: qaplatform.io
+    api: api.qaplatform.io
+
+apiGateway:
+  replicaCount: 3
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 20
+
+web:
+  replicaCount: 3
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 10
+
+workerService:
+  replicaCount: 2
+  keda:
+    maxReplicaCount: 100
+
+# Disable in-cluster dependencies — use managed services in production
+postgresql:
+  enabled: false
+
+redis:
+  enabled: false
+
+minio:
+  enabled: false
+
+monitoring:
+  serviceMonitor:
+    enabled: true

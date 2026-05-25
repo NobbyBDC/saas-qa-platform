@@ -1,0 +1,562 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ORGANIZATIONS & USERS (MULTI-TENANT CORE)
+// ============================================================
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  plan      Plan     @default(FREE)
+  planStatus String  @default("active") // active | trialing | past_due | canceled
+  trialEndsAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Billing
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?  @unique
+  billingEmail         String?
+  billingCycleAnchor   DateTime?
+
+  // Usage limits (hydrated from plan)
+  projectsLimit    Int @default(3)
+  runsPerMonth     Int @default(50)
+  storageGb        Int @default(1)
+  apiAccessEnabled Boolean @default(false)
+  ssoEnabled       Boolean @default(false)
+  ipWhitelistEnabled Boolean @default(false)
+
+  // Security
+  allowedIpRanges  String[] @default([])
+  ssoProviderId    String?
+  samlConfig       Json?
+
+  users          User[]
+  projects       Project[]
+  apiKeys        ApiKey[]
+  auditLogs      AuditLog[]
+  notifications  NotificationPreference[]
+  githubIntegration GitHubIntegration?
+  gitlabIntegration GitLabIntegration?
+  slackIntegration  SlackIntegration?
+  usageRecords    UsageRecord[]
+  invoices        Invoice[]
+  collaborators   CollaborationSession[]
+
+  @@index([stripeCustomerId])
+  @@index([plan])
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  name           String
+  passwordHash   String
+  role           UserRole     @default(DEVELOPER)
+  avatarUrl      String?
+  organizationId String
+  isActive       Boolean      @default(true)
+  lastLoginAt    DateTime?
+  mfaEnabled     Boolean      @default(false)
+  mfaSecret      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects       Project[]       @relation("ProjectCreator")
+  runs           TestRun[]       @relation("RunTrigger")
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+  collaborations CollaborationSession[]
+  aiActions      AiCopilotAction[]
+  notifications  NotificationLog[]
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// PROJECTS
+// ============================================================
+model Project {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  figmaUrl        String?
+  figmaFileId     String?
+  figmaToken      String?
+  previewUrl      String?
+  repositoryUrl   String?
+  defaultBranch   String   @default("main")
+  sonarProjectKey String?
+  sonarToken      String?
+  status         String   @default("active")
+  organizationId String
+  createdById    String
+  settings       Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("ProjectCreator", fields: [createdById], references: [id])
+  runs         TestRun[]
+  webhooks     Webhook[]
+  apiKeys      ApiKey[]     @relation("ProjectApiKeys")
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+// ============================================================
+// TEST RUNS
+// ============================================================
+model TestRun {
+  id            String    @id @default(uuid())
+  projectId     String
+  organizationId String
+  status        RunStatus @default(QUEUED)
+  triggeredBy   String    @default("manual") // manual | github_push | github_pr | api | schedule
+  triggeredById String?
+  gitBranch     String?
+  gitCommitSha  String?
+  gitPrNumber   Int?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  durationMs    Int?
+  summary       Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  triggeredByUser  User?            @relation("RunTrigger", fields: [triggeredById], references: [id])
+  stages           RunStage[]
+  issues           Issue[]
+  report           QAReport?
+  aiActions        AiCopilotAction[]
+  collaborations   CollaborationSession[]
+
+  @@index([projectId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([gitBranch])
+}
+
+model RunStage {
+  id          String    @id @default(uuid())
+  runId       String
+  type        String
+  status      String    @default("pending")
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
+  result      Json?
+  logs        String[]
+  createdAt   DateTime  @default(now())
+
+  run TestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+}
+
+// ============================================================
+// ISSUES
+// ============================================================
+model Issue {
+  id             String   @id @default(uuid())
+  runId          String
+  category       String
+  severity       IssueSeverity
+  title          String
+  description    String
+  location       String?
+  screenshotUrl  String?
+  suggestedFix   String?
+  aiSuggestedFix String?
+  aiFixApplied   Boolean  @default(false)
+  aiFixRunId     String?
+  jiraTicketId   String?
+  githubPrUrl    String?
+  status         IssueStatus @default(OPEN)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  run        TestRun           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  aiActions  AiCopilotAction[]
+
+  @@index([runId])
+  @@index([severity])
+  @@index([status])
+}
+
+// ============================================================
+// REPORTS
+// ============================================================
+model QAReport {
+  id          String   @id @default(uuid())
+  runId       String   @unique
+  projectId   String
+  organizationId String
+  generatedAt DateTime @default(now())
+  summary     Json
+  pdfUrl      String?
+  htmlUrl     String?
+  jsonUrl     String?
+
+  run TestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([organizationId])
+}
+
+// ============================================================
+// DESIGN TOKENS
+// ============================================================
+model DesignTokenSnapshot {
+  id        String   @id @default(uuid())
+  projectId String
+  version   String
+  tokens    Json
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+}
+
+// ============================================================
+// BILLING
+// ============================================================
+model Invoice {
+  id               String        @id @default(uuid())
+  organizationId   String
+  stripeInvoiceId  String        @unique
+  amount           Int           // cents
+  currency         String        @default("usd")
+  status           InvoiceStatus @default(DRAFT)
+  periodStart      DateTime
+  periodEnd        DateTime
+  pdfUrl           String?
+  hostedUrl        String?
+  paidAt           DateTime?
+  createdAt        DateTime      @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model UsageRecord {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String?
+  metricType     String   // runs | storage_bytes | api_calls
+  quantity       Int
+  recordedAt     DateTime @default(now())
+  billingPeriod  String   // "2024-01"
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([billingPeriod])
+  @@index([metricType])
+}
+
+// ============================================================
+// API KEYS
+// ============================================================
+model ApiKey {
+  id             String    @id @default(uuid())
+  name           String
+  keyHash        String    @unique
+  keyPrefix      String    // first 8 chars for display
+  organizationId String
+  projectId      String?
+  scopes         String[]  @default(["read"])
+  isActive       Boolean   @default(true)
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  revokedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation("ProjectApiKeys", fields: [projectId], references: [id])
+
+  @@index([organizationId])
+  @@index([keyHash])
+}
+
+// ============================================================
+// GITHUB / GITLAB INTEGRATION
+// ============================================================
+model GitHubIntegration {
+  id              String   @id @default(uuid())
+  organizationId  String   @unique
+  installationId  String?
+  accessToken     String
+  refreshToken    String?
+  tokenExpiresAt  DateTime?
+  githubLogin     String
+  githubAvatarUrl String?
+  repos           Json     @default("[]") // connected repos
+  webhookSecret   String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model GitLabIntegration {
+  id             String   @id @default(uuid())
+  organizationId String   @unique
+  accessToken    String
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  gitlabUserId   Int
+  gitlabUsername String
+  projects       Json     @default("[]")
+  webhookSecret  String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// SLACK INTEGRATION
+// ============================================================
+model SlackIntegration {
+  id             String  @id @default(uuid())
+  organizationId String  @unique
+  teamId         String
+  teamName       String
+  botToken       String
+  defaultChannel String?
+  isActive       Boolean @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// WEBHOOKS
+// ============================================================
+model Webhook {
+  id        String   @id @default(uuid())
+  projectId String
+  url       String
+  secret    String
+  events    String[] // push | pull_request | etc.
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ============================================================
+// NOTIFICATION PREFERENCES
+// ============================================================
+model NotificationPreference {
+  id             String  @id @default(uuid())
+  organizationId String
+  userId         String?
+  channel        String  // email | slack | webhook
+  event          String  // run_success | run_failure | security_issue | deploy_completed
+  enabled        Boolean @default(true)
+  config         Json    @default("{}")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, channel, event])
+  @@index([organizationId])
+}
+
+model NotificationLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  orgId     String
+  channel   String
+  event     String
+  payload   Json
+  status    String   @default("sent") // sent | failed
+  error     String?
+  sentAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([orgId])
+  @@index([event])
+}
+
+// ============================================================
+// AUDIT LOGS (IMMUTABLE)
+// ============================================================
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String?
+  action         String   // user.login | project.create | run.trigger | billing.upgrade, etc.
+  resourceType   String?  // project | run | user | billing
+  resourceId     String?
+  metadata       Json     @default("{}")
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ============================================================
+// COLLABORATION SESSIONS
+// ============================================================
+model CollaborationSession {
+  id             String   @id @default(uuid())
+  organizationId String
+  runId          String?
+  userId         String
+  socketId       String
+  joinedAt       DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+  metadata       Json     @default("{}")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run          TestRun?     @relation(fields: [runId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([runId])
+}
+
+// ============================================================
+// AI COPILOT
+// ============================================================
+model AiCopilotAction {
+  id          String        @id @default(uuid())
+  runId       String?
+  issueId     String?
+  userId      String?
+  actionType  AiActionType
+  status      AiActionStatus @default(PENDING)
+  input       Json
+  output      Json?
+  patchDiff   String?
+  appliedAt   DateTime?
+  createdAt   DateTime       @default(now())
+
+  run   TestRun? @relation(fields: [runId], references: [id])
+  issue Issue?   @relation(fields: [issueId], references: [id])
+  user  User?    @relation(fields: [userId], references: [id])
+
+  @@index([runId])
+  @@index([issueId])
+}
+
+// ============================================================
+// METRICS (for Observability)
+// ============================================================
+model MetricSnapshot {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String?
+  metricName     String   // pipeline_duration | failure_rate | deploy_frequency
+  value          Float
+  labels         Json     @default("{}")
+  recordedAt     DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([metricName])
+  @@index([recordedAt])
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum UserRole {
+  SUPER_ADMIN  // platform-level; bypasses tenant scoping
+  OWNER
+  ADMIN
+  DEVELOPER
+  VIEWER
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  PASSED
+  FAILED
+  CANCELLED
+  TIMEOUT
+}
+
+enum IssueSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  FIXED
+  WONT_FIX
+  AI_FIXED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum AiActionType {
+  FIX_FAILING_TEST
+  IMPROVE_ACCESSIBILITY
+  OPTIMIZE_PERFORMANCE
+  SUGGEST_UI_IMPROVEMENT
+  SELF_HEAL_PIPELINE
+}
+
+enum AiActionStatus {
+  PENDING
+  ANALYZING
+  PATCH_READY
+  APPLIED
+  FAILED
+  REJECTED
+}

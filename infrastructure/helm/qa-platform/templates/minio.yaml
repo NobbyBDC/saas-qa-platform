@@ -1,0 +1,85 @@
+{{- if .Values.minio.enabled -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "qa-platform.fullname" . }}-minio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "qa-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "qa-platform.selectorLabels" (dict "name" "minio" "root" .) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "qa-platform.selectorLabels" (dict "name" "minio" "root" .) | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      securityContext:
+        runAsNonRoot: false
+      containers:
+        - name: minio
+          image: minio/minio:{{ .Values.minio.image.tag | default "latest" }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          env:
+            - name: MINIO_ROOT_USER
+              value: {{ .Values.minio.rootUser | quote }}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.apiGateway.existingSecret }}
+                  key: MINIO_SECRET_KEY
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "qa-platform.fullname" . }}-minio
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "qa-platform.fullname" . }}-minio
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.global.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.minio.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "qa-platform.fullname" . }}-minio
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    {{- include "qa-platform.selectorLabels" (dict "name" "minio" "root" .) | nindent 4 }}
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+{{- end }}

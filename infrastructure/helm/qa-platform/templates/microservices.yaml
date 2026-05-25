@@ -1,0 +1,105 @@
+{{/*
+Renders a simple stateless microservice Deployment + Service.
+Each entry in .services drives one Deployment + Service pair.
+*/}}
+{{- $services := list
+  (dict "name" "figma-service"     "port" 4001 "cfg" .Values.figmaService     "tag" .Values.images.figmaService.tag)
+  (dict "name" "codegen-service"   "port" 4002 "cfg" .Values.codegenService   "tag" .Values.images.codegenService.tag)
+  (dict "name" "testing-service"   "port" 4003 "cfg" .Values.testingService   "tag" .Values.images.testingService.tag)
+  (dict "name" "security-service"  "port" 4004 "cfg" .Values.securityService  "tag" .Values.images.securityService.tag)
+  (dict "name" "reporting-service" "port" 4005 "cfg" .Values.reportingService "tag" .Values.images.reportingService.tag)
+-}}
+{{- range $svc := $services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "qa-platform.fullname" $ }}-{{ $svc.name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "qa-platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $svc.name }}
+spec:
+  replicas: {{ $svc.cfg.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "qa-platform.selectorLabels" (dict "name" $svc.name "root" $) | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "qa-platform.selectorLabels" (dict "name" $svc.name "root" $) | nindent 8 }}
+        app.kubernetes.io/component: {{ $svc.name }}
+    spec:
+      serviceAccountName: {{ include "qa-platform.fullname" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $svc.name }}
+          image: {{ include "qa-platform.image" (dict "repo" $svc.name "tag" $svc.tag "root" $) }}
+          imagePullPolicy: Always
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: {{ $svc.port | quote }}
+            - name: REDIS_HOST
+              value: {{ include "qa-platform.fullname" $ }}-redis-master
+            - name: REDIS_PORT
+              value: "6379"
+            - name: MINIO_ENDPOINT
+              value: {{ include "qa-platform.fullname" $ }}-minio
+            - name: MINIO_PORT
+              value: "9000"
+          envFrom:
+            {{- include "qa-platform.envFrom" $ | nindent 12 }}
+          resources:
+            {{- toYaml $svc.cfg.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "qa-platform.fullname" $ }}-{{ $svc.name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "qa-platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $svc.name }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "qa-platform.selectorLabels" (dict "name" $svc.name "root" $) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

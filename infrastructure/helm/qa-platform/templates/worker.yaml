@@ -1,0 +1,88 @@
+{{- $svcName := "worker-service" -}}
+{{- $cfg := .Values.workerService -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "qa-platform.fullname" . }}-{{ $svcName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "qa-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $svcName }}
+spec:
+  {{- if not $cfg.keda.enabled }}
+  replicas: {{ $cfg.replicaCount }}
+  {{- else }}
+  replicas: 0
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "qa-platform.selectorLabels" (dict "name" $svcName "root" .) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "qa-platform.selectorLabels" (dict "name" $svcName "root" .) | nindent 8 }}
+        app.kubernetes.io/component: {{ $svcName }}
+    spec:
+      serviceAccountName: {{ include "qa-platform.fullname" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $svcName }}
+          image: {{ include "qa-platform.image" (dict "repo" "api-gateway" "tag" .Values.images.apiGateway.tag "root" .) }}
+          imagePullPolicy: Always
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          command: ["node", "dist/worker.js"]
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: WORKER_ONLY
+              value: "true"
+            - name: REDIS_HOST
+              value: {{ include "qa-platform.fullname" . }}-redis-master
+            - name: REDIS_PORT
+              value: "6379"
+          envFrom:
+            {{- include "qa-platform.envFrom" . | nindent 12 }}
+          resources:
+            {{- toYaml $cfg.resources | nindent 12 }}
+      terminationGracePeriodSeconds: 300
+---
+{{- if $cfg.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "qa-platform.fullname" . }}-{{ $svcName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "qa-platform.fullname" . }}-{{ $svcName }}
+  minReplicaCount: {{ $cfg.keda.minReplicaCount }}
+  maxReplicaCount: {{ $cfg.keda.maxReplicaCount }}
+  pollingInterval: {{ $cfg.keda.pollingInterval }}
+  cooldownPeriod: {{ $cfg.keda.cooldownPeriod }}
+  triggers:
+    - type: redis
+      metadata:
+        address: {{ include "qa-platform.fullname" . }}-redis-master:6379
+        listName: bull:runs:wait
+        listLength: {{ $cfg.keda.queueLength | quote }}
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "qa-platform.fullname" . }}-{{ $svcName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "qa-platform.selectorLabels" (dict "name" $svcName "root" .) | nindent 6 }}

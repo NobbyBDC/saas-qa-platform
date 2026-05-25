@@ -1,0 +1,252 @@
+# ── Global ──────────────────────────────────────────────────────────────────
+global:
+  imageRegistry: ghcr.io/qa-platform
+  imagePullSecrets:
+    - name: ghcr-secret
+  storageClass: gp3
+
+# ── Environment ─────────────────────────────────────────────────────────────
+environment: staging   # staging | production
+
+# ── Image tags (overridden per-service in CI/CD) ───────────────────────────
+images:
+  apiGateway:
+    tag: latest
+  web:
+    tag: latest
+  figmaService:
+    tag: latest
+  codegenService:
+    tag: latest
+  testingService:
+    tag: latest
+  securityService:
+    tag: latest
+  reportingService:
+    tag: latest
+  workerService:
+    tag: latest
+
+# ── Ingress ─────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    web: staging.qaplatform.io
+    api: api.staging.qaplatform.io
+  tls:
+    enabled: true
+    secretName: qa-platform-tls
+
+# ── API Gateway ─────────────────────────────────────────────────────────────
+apiGateway:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+  podDisruptionBudget:
+    minAvailable: 1
+  env:
+    NODE_ENV: production
+    API_GATEWAY_PORT: "4000"
+    LOG_LEVEL: info
+  # Sensitive values should be provided via existingSecret
+  existingSecret: qa-platform-secrets
+
+# ── Web (Next.js) ────────────────────────────────────────────────────────────
+web:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  env:
+    NODE_ENV: production
+    PORT: "3000"
+
+# ── Worker service (BullMQ processor) ────────────────────────────────────────
+workerService:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  keda:
+    enabled: true
+    minReplicaCount: 0
+    maxReplicaCount: 50
+    pollingInterval: 15
+    cooldownPeriod: 120
+    queueLength: 5
+
+# ── Figma Service ────────────────────────────────────────────────────────────
+figmaService:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Codegen Service ──────────────────────────────────────────────────────────
+codegenService:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# ── Testing Service ──────────────────────────────────────────────────────────
+testingService:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+# ── Security Service ─────────────────────────────────────────────────────────
+securityService:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# ── Reporting Service ────────────────────────────────────────────────────────
+reportingService:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── PostgreSQL (Bitnami — disable in prod, use RDS) ──────────────────────────
+postgresql:
+  enabled: true   # set false in production and provide DATABASE_URL via secret
+  auth:
+    database: qaplatform
+    existingSecret: qa-platform-secrets
+    secretKeys:
+      adminPasswordKey: POSTGRES_PASSWORD
+      userPasswordKey: POSTGRES_PASSWORD
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: gp3
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+# ── Redis (Bitnami — disable in prod, use ElastiCache) ───────────────────────
+redis:
+  enabled: true   # set false in production and provide REDIS_HOST via secret
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: gp3
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+  replica:
+    replicaCount: 0
+
+# ── MinIO (object storage — disable in prod, use S3) ─────────────────────────
+minio:
+  enabled: true
+  image:
+    tag: RELEASE.2024-01-01T00-00-00Z
+  rootUser: minioadmin
+  existingSecret: qa-platform-secrets
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: gp3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# ── Service accounts & IRSA ──────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  annotations: {}
+  # AWS IRSA: annotations: { eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/qa-platform-s3-role }
+
+# ── Pod security ─────────────────────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# ── Network policy ───────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+
+# ── Monitoring ───────────────────────────────────────────────────────────────
+monitoring:
+  serviceMonitor:
+    enabled: false   # set true if kube-prometheus-stack is installed
+    namespace: monitoring
+    interval: 30s

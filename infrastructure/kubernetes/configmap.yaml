@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qa-platform-config
+  namespace: qa-platform
+data:
+  NODE_ENV: "production"
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "qaplatform"
+  FIGMA_SERVICE_URL: "http://figma-service:4001"
+  CODEGEN_SERVICE_URL: "http://codegen-service:4002"
+  TESTING_SERVICE_URL: "http://testing-service:4003"
+  SECURITY_SERVICE_URL: "http://security-service:4004"
+  REPORTING_SERVICE_URL: "http://reporting-service:4005"
+  ZAP_API_URL: "http://zap-service:8090"
+  S3_ENDPOINT: "http://minio-service:9000"
+  S3_BUCKET: "qa-platform"
+  CLAUDE_MODEL: "claude-sonnet-4-6"
+  ALLOWED_ORIGINS: "https://your-domain.com"

@@ -1,0 +1,43 @@
+{
+  "name": "@qa-platform/shared-utils",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./logger": {
+      "import": "./dist/logger.js",
+      "require": "./dist/logger.js",
+      "types": "./dist/logger.d.ts"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "logger": ["./dist/logger.d.ts"]
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@qa-platform/shared-types": "*",
+    "uuid": "^9.0.0",
+    "dayjs": "^1.11.0",
+    "axios": "^1.7.0",
+    "lodash": "^4.17.21",
+    "chalk": "^5.3.0",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/uuid": "^9.0.0",
+    "@types/lodash": "^4.17.0",
+    "@types/node": "^20.0.0"
+  }
+}

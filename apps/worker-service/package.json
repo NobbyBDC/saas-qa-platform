@@ -1,0 +1,12 @@
+{
+  "name": "@qa-platform/worker-service",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'worker-service: no build step'",
+    "dev": "echo 'worker-service: no dev step'",
+    "lint": "echo 'worker-service: no lint step'",
+    "type-check": "echo 'worker-service: no type-check step'"
+  },
+  "dependencies": {}
+}

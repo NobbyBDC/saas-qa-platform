@@ -1,0 +1,23 @@
+apiVersion: v2
+name: qa-platform
+description: Full-stack SaaS QA automation platform — Design → Code → QA → Deploy
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - qa
+  - testing
+  - saas
+  - automation
+maintainers:
+  - name: QA Platform Team
+    email: platform@qaplatform.io
+dependencies:
+  - name: postgresql
+    version: "14.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "18.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

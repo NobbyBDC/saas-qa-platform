@@ -1,0 +1,43 @@
+QA Platform {{ .Chart.AppVersion }} deployed successfully!
+
+Environment: {{ .Values.environment }}
+Namespace:   {{ .Release.Namespace }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Access URLs
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{- if .Values.ingress.enabled }}
+  Web App:    https://{{ .Values.ingress.hosts.web }}
+  API:        https://{{ .Values.ingress.hosts.api }}
+  API Docs:   https://{{ .Values.ingress.hosts.api }}/api/docs
+  Health:     https://{{ .Values.ingress.hosts.api }}/api/v1/health
+{{- else }}
+  Port-forward to access services:
+    kubectl port-forward svc/{{ include "qa-platform.fullname" . }}-api-gateway 4000:4000 -n {{ .Release.Namespace }}
+    kubectl port-forward svc/{{ include "qa-platform.fullname" . }}-web 3000:3000 -n {{ .Release.Namespace }}
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Demo Credentials (after running db seed)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Admin:  admin@demo.com  /  Demo1234!
+  Dev:    dev@demo.com    /  Dev1234!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Run DB seed (first deploy only)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  kubectl exec -n {{ .Release.Namespace }} \
+    deploy/{{ include "qa-platform.fullname" . }}-api-gateway \
+    -- npx prisma db seed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Useful kubectl commands
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Watch all pods
+  kubectl get pods -n {{ .Release.Namespace }} -w
+
+  # Api gateway logs
+  kubectl logs -n {{ .Release.Namespace }} deploy/{{ include "qa-platform.fullname" . }}-api-gateway -f
+
+  # Scale worker manually (if KEDA disabled)
+  kubectl scale deploy/{{ include "qa-platform.fullname" . }}-worker-service --replicas=3 -n {{ .Release.Namespace }}
