@@ -344,7 +344,10 @@ export class SecurityScannerService {
 
   private async checkZapAvailable(): Promise<boolean> {
     try {
-      await axios.get(`${this.zapUrl}/JSON/core/view/version/`, { timeout: 3000 });
+      await axios.get(`${this.zapUrl}/JSON/core/view/version/`, {
+        headers: { 'X-ZAP-API-Key': this.zapApiKey },
+        timeout: 3000,
+      });
       return true;
     } catch {
       return false;
