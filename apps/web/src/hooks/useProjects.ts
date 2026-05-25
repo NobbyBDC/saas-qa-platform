@@ -88,7 +88,6 @@ export const useRun = (runId: string) =>
   });
 
 export interface EnabledTests {
-  visual: boolean;
   functional: boolean;
   accessibility: boolean;
   performance: boolean;
