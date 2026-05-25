@@ -59,9 +59,8 @@ export const useCreateProject = () => {
   return useMutation({
     mutationFn: async (payload: {
       name: string;
-      figmaUrl: string;
-      figmaToken: string;
       description?: string;
+      previewUrl?: string;
       repositoryUrl?: string;
     }) => {
       const { data } = await api.post('/projects', payload);
