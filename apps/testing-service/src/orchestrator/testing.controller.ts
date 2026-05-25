@@ -1,6 +1,5 @@
 import { Controller, Post, Body, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { VisualRegressionService } from '../visual/visual-regression.service';
 import { AccessibilityService } from '../accessibility/accessibility.service';
 import { PerformanceService } from '../performance/performance.service';
 import { FunctionalTestingService } from '../functional/functional-testing.service';
@@ -9,18 +8,10 @@ import { FunctionalTestingService } from '../functional/functional-testing.servi
 @Controller('')
 export class TestingController {
   constructor(
-    private readonly visual: VisualRegressionService,
     private readonly accessibility: AccessibilityService,
     private readonly performance: PerformanceService,
     private readonly functional: FunctionalTestingService,
   ) {}
-
-  @ApiOperation({ summary: 'Run visual regression tests' })
-  @Post('visual')
-  async runVisual(@Body() body: any) {
-    const data = await this.visual.runTests(body);
-    return { success: true, data };
-  }
 
   @ApiOperation({ summary: 'Run accessibility tests' })
   @Post('accessibility')
